@@ -2,7 +2,7 @@
 
 # Stimmy
 
-A native [Stremio](https://www.stremio.com) client for macOS, written in Rust with
+A native [Stremio](https://www.stremio.com) client for macOS and Linux, written in Rust with
 [GPUI](https://www.gpui.rs). No browser engine and no sidebar: the window is lit by whatever
 you're looking at.
 
@@ -28,10 +28,36 @@ cargo run --release -p stimmy-desktop
 MP4 and HLS play with nothing else installed. MKV and similar formats need libmpv:
 `brew install mpv`, or have [IINA](https://iina.io) installed.
 
+### Linux
+
+Wayland or X11, with a Rust toolchain and these packages (Debian and Ubuntu names):
+
+```sh
+sudo apt install clang libdbus-1-dev libfontconfig-dev libwayland-dev \
+  libxkbcommon-dev libvulkan-dev libmpv2
+```
+
+`clang` is required: `.cargo/config.toml` points `CC` at it, because the C dependencies don't
+build with every GCC. `libmpv2` is only needed at runtime, and only for video.
+
+```sh
+cargo run --release -p stimmy-desktop
+./scripts/build-linux.sh --release --package Stimmy-linux.tar.gz
+```
+
+The tarball holds the binary, a `.desktop` entry, an icon, and the third-party notices. Unpack it
+anywhere and run `bin/stimmy-desktop`.
+
+Video on Linux goes through libmpv's software renderer, since Wayland has no subwindows to put a
+native view in. That means software decoding: 1080p is comfortable, 4K is not. Sessions use the
+Secret Service when one is running, and a mode 0600 file in the data folder otherwise.
+
 Stimmy comes with public catalogs from Cinemeta. To watch anything, add a stream add-on in
 **Settings › Add-ons**, or sign in to use your account's.
 
 ## Keyboard
+
+On Linux, read ⌘ as Ctrl.
 
 | Keys | Action |
 | --- | --- |

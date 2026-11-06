@@ -17,12 +17,12 @@ Two crates. `stimmy-core` is everything that isn't drawing, with no dependency o
 ## Video
 
 GPUI draws the interface through [GPUI Kit](https://github.com/longbridge/gpui-kit), pinned
-exactly because both make breaking changes between releases. Each video engine owns a native
-view inserted directly beneath GPUI's view in the window, and GPUI's layer goes transparent
-while the player is open. Controls composite over real video with no copying, and hardware
-decoding and libass stay intact.
+exactly because both make breaking changes between releases. `player/mod.rs` holds the `Engine`
+trait and the `Frame` type; `player/macos/` and `player/linux/` implement it.
 
-Two things have to hold for this to work:
+**macOS** owns a native view inserted directly beneath GPUI's view in the window, and GPUI's
+layer goes transparent while the player is open. Controls composite over real video with no
+copying, and hardware decoding and libass stay intact. Two things have to hold for this:
 
 - **The root must stay transparent.** Kit's root fills the window with the theme's background,
   which hides the video while audio plays on. `apply_theme` clears it, and every page paints
@@ -34,6 +34,17 @@ Two things have to hold for this to work:
 AVFoundation first and falls back to libmpv if that fails. libmpv is opened at runtime, so the
 app runs without it and says what's needed if a video requires it. `build.rs` sets the search
 order: bundled, Homebrew, then the copy inside IINA.
+
+**Linux** can't use that approach: Wayland has no subwindows, so there is no native view to
+put beneath GPUI's. libmpv is instead driven through its software render API
+(`MPV_RENDER_API_TYPE_SW`), which writes BGRA into a buffer that the player hands to GPUI as a
+`RenderImage` and draws with `img()`. A dedicated `stimmy-video` thread renders, because a
+1080p frame takes long enough that doing it on the interface thread would stutter the
+controls. The cost is software decoding (`hwdec=no`) and a copy per frame; the benefit is that
+it works on any compositor. mpv renders at the video's own size shrunk to fit the viewport and
+never enlarged, so GPUI's GPU scaling does the rest. `MPV_RENDER_PARAM_SW_POINTER` takes the
+buffer itself rather than a pointer to it, and both the pointer and the stride must be 64-byte
+aligned or mpv's scaler takes a slow path.
 
 ## Play
 
@@ -72,6 +83,9 @@ that session and the app says why it won't persist.
 
 Ad-hoc signed builds can prompt for Keychain access again after each rebuild, since macOS ties
 "Always Allow" to the code signature.
+
+Linux has no Keychain, so sessions go to the Secret Service through `keyring` when a provider is
+running, and otherwise to a mode 0600 `accounts.json` in the data folder.
 
 ## Not built yet
 

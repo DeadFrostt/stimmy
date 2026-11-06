@@ -827,6 +827,17 @@ impl Stimmy {
                     this.toggle_pause(cx);
                 }
             }))
+            // The picture, when the engine renders into a buffer. macOS draws it
+            // natively beneath GPUI instead, so this is empty there.
+            .when_some(state.frame.clone(), |el, frame| {
+                el.child(
+                    img(frame)
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .object_fit(ObjectFit::Contain),
+                )
+            })
             // The drag region goes first so everything else sits on top of it.
             .child(
                 div()

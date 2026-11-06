@@ -20,3 +20,7 @@ tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
+
+# The Secret Service over D-Bus, which needs libdbus-1-dev at build time.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
