@@ -1,0 +1,4 @@
+# gpui-kit 0.9's GPUI snapshot uses library features stabilized after Rust 1.97.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]

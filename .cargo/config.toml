@@ -1,0 +1,11 @@
+# Link with Xcode's clang even if another `cc` comes first on PATH: one from Nix,
+# for example, can't find libiconv.
+[target.aarch64-apple-darwin]
+linker = "/usr/bin/clang"
+
+[target.x86_64-apple-darwin]
+linker = "/usr/bin/clang"
+
+[env]
+CC = "/usr/bin/clang"
+CXX = "/usr/bin/clang++"
