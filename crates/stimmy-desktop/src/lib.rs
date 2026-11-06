@@ -41,17 +41,35 @@ pub fn apply_theme(cx: &mut App) {
     Theme::global_mut(cx).tokens.background = gpui_kit::transparent_black().into();
 }
 
+/// A keystroke on the app's shortcut modifier: Command on macOS, Control on
+/// Linux, where Super belongs to the window manager.
+#[cfg(target_os = "macos")]
+#[macro_export]
+macro_rules! shortcut {
+    ($key:literal) => {
+        concat!("cmd-", $key)
+    };
+}
+
+#[cfg(not(target_os = "macos"))]
+#[macro_export]
+macro_rules! shortcut {
+    ($key:literal) => {
+        concat!("ctrl-", $key)
+    };
+}
+
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
-        KeyBinding::new("cmd-1", OpenHome, Some("Stimmy")),
-        KeyBinding::new("cmd-2", OpenSearch, Some("Stimmy")),
-        KeyBinding::new("cmd-f", OpenSearch, Some("Stimmy")),
-        KeyBinding::new("cmd-3", OpenLibrary, Some("Stimmy")),
-        KeyBinding::new("cmd-4", OpenDownloads, Some("Stimmy")),
-        KeyBinding::new("cmd-5", OpenSettings, Some("Stimmy")),
-        KeyBinding::new("cmd-,", OpenSettings, Some("Stimmy")),
-        KeyBinding::new("cmd-r", Refresh, Some("Stimmy")),
-        KeyBinding::new("cmd-d", ToggleSave, Some("Stimmy")),
+        KeyBinding::new(shortcut!("1"), OpenHome, Some("Stimmy")),
+        KeyBinding::new(shortcut!("2"), OpenSearch, Some("Stimmy")),
+        KeyBinding::new(shortcut!("f"), OpenSearch, Some("Stimmy")),
+        KeyBinding::new(shortcut!("3"), OpenLibrary, Some("Stimmy")),
+        KeyBinding::new(shortcut!("4"), OpenDownloads, Some("Stimmy")),
+        KeyBinding::new(shortcut!("5"), OpenSettings, Some("Stimmy")),
+        KeyBinding::new(shortcut!(","), OpenSettings, Some("Stimmy")),
+        KeyBinding::new(shortcut!("r"), Refresh, Some("Stimmy")),
+        KeyBinding::new(shortcut!("d"), ToggleSave, Some("Stimmy")),
         KeyBinding::new("escape", Back, Some("Stimmy")),
         KeyBinding::new("[", PreviousHero, Some("Stimmy")),
         KeyBinding::new("]", NextHero, Some("Stimmy")),

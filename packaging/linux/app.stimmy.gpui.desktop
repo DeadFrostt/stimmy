@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Stimmy
+GenericName=Video player
+Comment=Stremio, natively
+Exec=stimmy-desktop
+Icon=app.stimmy.gpui
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=stremio;stream;video;movies;series;
+StartupWMClass=app.stimmy.gpui

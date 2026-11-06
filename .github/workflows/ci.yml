@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-15
+            artifact: Stimmy-macOS.zip
+          - name: Linux
+            os: ubuntu-24.04
+            artifact: Stimmy-linux.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      # GPUI's Linux backend links Wayland, X11, fontconfig, and Vulkan directly.
+      # clang is required: .cargo/config.toml points CC at it, because the C
+      # dependencies don't build with every GCC.
+      - name: Install Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config clang cmake python3 \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-composite0-dev libxcb-dri3-dev \
+            libxcb-present-dev libxcb-xkb-dev libxcb-render0-dev libxcb-shm0-dev \
+            libfontconfig-dev libfreetype-dev libssl-dev libzstd-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libglib2.0-dev \
+            libvulkan-dev mesa-vulkan-drivers
+
+      # The toolchain is pinned in rust-toolchain.toml; rustup installs it here.
+      - name: Install Rust
+        run: |
+          rustup show
+          rustup component add clippy rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # The interface tests share one global scheduler, and the app's worker
+      # threads outlive a test, so they run one at a time.
+      - name: Test
+        run: cargo test --workspace -- --test-threads=1
+
+      # Packaging is inlined rather than calling scripts/, which stays local.
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          cargo build -p stimmy-desktop --release
+          bundle="build/gpui/Stimmy GPUI.app"
+          mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+          cp target/release/stimmy-desktop "$bundle/Contents/MacOS/stimmy-desktop"
+          cp THIRD_PARTY_NOTICES.md crates/stimmy-desktop/LICENSE-GPUI-APACHE \
+            "$bundle/Contents/Resources/"
+          cat > "$bundle/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>CFBundleExecutable</key><string>stimmy-desktop</string>
+            <key>CFBundleIdentifier</key><string>app.stimmy.gpui</string>
+            <key>CFBundleName</key><string>Stimmy GPUI</string>
+            <key>CFBundleDisplayName</key><string>Stimmy GPUI</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>0.1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleIconFile</key><string>Stimmy.icns</string>
+            <key>LSMinimumSystemVersion</key><string>13.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict></plist>
+          PLIST
+          iconset="build/gpui/Stimmy.iconset"
+          mkdir -p "$iconset"
+          for dimension in 16 32 128 256 512; do
+            sips -z "$dimension" "$dimension" assets/icon.png \
+              --out "$iconset/icon_${dimension}x${dimension}.png" >/dev/null
+            retina=$((dimension * 2))
+            sips -z "$retina" "$retina" assets/icon.png \
+              --out "$iconset/icon_${dimension}x${dimension}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$iconset" -o "$bundle/Contents/Resources/Stimmy.icns"
+          codesign --force --deep --sign - "$bundle"
+          ditto -c -k --keepParent "$bundle" "${{ matrix.artifact }}"
+
+      # libmpv is opened at runtime, so it is not a build dependency.
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          cargo build -p stimmy-desktop --release
+          stage=$(mktemp -d)
+          mkdir -p "$stage/bin" "$stage/share/applications" \
+            "$stage/share/icons/hicolor/512x512/apps"
+          cp target/release/stimmy-desktop "$stage/bin/"
+          cp packaging/linux/app.stimmy.gpui.desktop "$stage/share/applications/"
+          cp assets/icon.png \
+            "$stage/share/icons/hicolor/512x512/apps/app.stimmy.gpui.png"
+          cp THIRD_PARTY_NOTICES.md crates/stimmy-desktop/LICENSE-GPUI-APACHE "$stage/"
+          tar -czf "${{ matrix.artifact }}" -C "$stage" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error

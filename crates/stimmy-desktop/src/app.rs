@@ -222,6 +222,9 @@ pub struct PlayerState {
     pub candidate: usize,
     pub opened_at: std::time::Instant,
     pub status: Option<String>,
+    /// The newest picture from an engine that renders into a buffer. macOS
+    /// engines draw natively, so this stays empty there.
+    pub frame: Option<std::sync::Arc<gpui_kit::RenderImage>>,
     remembered: bool,
     subtitles_fetched: bool,
     _awake: KeepAwake,
@@ -1635,6 +1638,7 @@ impl Stimmy {
             candidate: 0,
             opened_at: std::time::Instant::now(),
             status: None,
+            frame: None,
             remembered: false,
             subtitles_fetched: false,
             _awake: KeepAwake::begin(),
@@ -1698,6 +1702,29 @@ impl Stimmy {
                 engine.set_volume(if state.muted { 0. } else { state.volume });
                 if state.speed != 1. {
                     engine.set_speed(state.speed);
+                }
+                // An engine that renders into a buffer says when a picture is
+                // ready, so the interface redraws then instead of polling.
+                if let Some(ready) = engine.frame_ready() {
+                    let generation = state.generation;
+                    cx.spawn(async move |this, cx| {
+                        while ready.recv().await.is_ok() {
+                            let alive = this.update(cx, |this, cx| {
+                                let current = this
+                                    .player
+                                    .as_ref()
+                                    .is_some_and(|state| state.generation == generation);
+                                if current {
+                                    cx.notify();
+                                }
+                                current
+                            });
+                            if !matches!(alive, Ok(true)) {
+                                break;
+                            }
+                        }
+                    })
+                    .detach();
                 }
                 state.engine = Some(engine);
                 self.fetch_subtitles(cx);

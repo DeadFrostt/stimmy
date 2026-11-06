@@ -37,7 +37,7 @@ fn main() {
                 ]),
             ]);
             stimmy_desktop::bind_keys(cx);
-            cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
+            cx.bind_keys([KeyBinding::new(stimmy_desktop::shortcut!("q"), Quit, None)]);
             let bounds = Bounds::centered(None, size(px(1280.), px(860.)), cx);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),

@@ -16,6 +16,11 @@ async-channel = "2"
 raw-window-handle = "0.6"
 serde_json.workspace = true
 url = "2"
+# Video frames reach GPUI as images; the version must match gpui-kit's.
+image = { version = "0.25", default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libloading = "0.8"

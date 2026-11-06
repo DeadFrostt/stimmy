@@ -142,11 +142,30 @@ impl Render for Stimmy {
             self.password_input
                 .update(cx, |input, cx| input.set_value("", window, cx));
         }
-        if self.host_view.is_none()
-            && let Ok(handle) = raw_window_handle::HasWindowHandle::window_handle(&*window)
-            && let raw_window_handle::RawWindowHandle::AppKit(handle) = handle.as_raw()
+        if self.host_view.is_none() {
+            self.host_view = crate::player::HostView::from_window(window);
+        }
+        // Linux draws video as an image, so the newest picture is taken here,
+        // where the window can release the one it replaces.
+        if let Some(state) = &mut self.player
+            && let Some(engine) = &mut state.engine
         {
-            self.host_view = Some(crate::player::HostView(handle.ns_view.as_ptr() as *mut _));
+            let scale = window.scale_factor();
+            let viewport = window.viewport_size();
+            engine.set_viewport(
+                (f32::from(viewport.width) * scale).round() as u32,
+                (f32::from(viewport.height) * scale).round() as u32,
+            );
+            if let Some(frame) = engine.take_frame() {
+                let buffer = image::ImageBuffer::from_raw(frame.width, frame.height, frame.bgra);
+                if let Some(buffer) = buffer {
+                    let image =
+                        std::sync::Arc::new(RenderImage::new(vec![image::Frame::new(buffer)]));
+                    if let Some(previous) = state.frame.replace(image) {
+                        let _ = window.drop_image(previous);
+                    }
+                }
+            }
         }
         // GPUI's layer only needs to let video through while the player is open.
         let wants_transparent = self.player.is_some();

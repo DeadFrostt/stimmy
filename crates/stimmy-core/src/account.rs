@@ -459,15 +459,16 @@ impl StremioClient {
     }
 }
 
-/// Sessions live in the Keychain, never in a JSON file.
+/// Sessions live in the platform's secret store, never in a JSON file.
 pub mod keychain {
     use super::{AccountSession, Error, Result};
-    use security_framework::passwords::{get_generic_password, set_generic_password};
 
     const ACCOUNT: &str = "sessions";
     pub const SERVICE: &str = "app.stimmy.gpui.accounts";
 
+    #[cfg(target_os = "macos")]
     pub fn read(service: &str) -> Result<Vec<AccountSession>> {
+        use security_framework::passwords::get_generic_password;
         match get_generic_password(service, ACCOUNT) {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|_| Error::Storage("saved accounts couldn’t be read".into())),
@@ -479,7 +480,10 @@ pub mod keychain {
             ))),
         }
     }
+
+    #[cfg(target_os = "macos")]
     pub fn write(service: &str, sessions: &[AccountSession]) -> Result<()> {
+        use security_framework::passwords::set_generic_password;
         let bytes = serde_json::to_vec(sessions).map_err(|e| Error::Storage(e.to_string()))?;
         set_generic_password(service, ACCOUNT, &bytes).map_err(|error| {
             Error::Storage(format!(
@@ -489,6 +493,59 @@ pub mod keychain {
             ))
         })
     }
+
+    /// The Secret Service (GNOME Keyring, KWallet) over D-Bus. Where no provider
+    /// is running, sessions fall back to a private file in the data folder: the
+    /// same protection a browser gives its cookies, and better than losing the
+    /// account on a compositor that ships no keyring.
+    #[cfg(not(target_os = "macos"))]
+    mod secret_service {
+        use super::{ACCOUNT, AccountSession, Error, Result};
+        use keyring::Entry;
+        use std::path::PathBuf;
+
+        fn fallback() -> Result<PathBuf> {
+            Ok(crate::data_directory()?.join("accounts.json"))
+        }
+
+        fn decode(bytes: &[u8]) -> Result<Vec<AccountSession>> {
+            serde_json::from_slice(bytes)
+                .map_err(|_| Error::Storage("saved accounts couldn’t be read".into()))
+        }
+
+        fn read_fallback() -> Result<Vec<AccountSession>> {
+            match std::fs::read(fallback()?) {
+                Ok(bytes) => decode(&bytes),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
+                Err(error) => Err(error.into()),
+            }
+        }
+
+        pub fn read(service: &str) -> Result<Vec<AccountSession>> {
+            let Ok(entry) = Entry::new(service, ACCOUNT) else {
+                return read_fallback();
+            };
+            match entry.get_secret() {
+                Ok(bytes) => decode(&bytes),
+                // No provider, or nothing stored yet: either way the file is
+                // the only other place sessions can be.
+                Err(_) => read_fallback(),
+            }
+        }
+
+        pub fn write(service: &str, sessions: &[AccountSession]) -> Result<()> {
+            let bytes = serde_json::to_vec(sessions).map_err(|e| Error::Storage(e.to_string()))?;
+            if let Ok(entry) = Entry::new(service, ACCOUNT)
+                && entry.set_secret(&bytes).is_ok()
+            {
+                return Ok(());
+            }
+            crate::store::atomic_write(&fallback()?, &bytes, true)
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub use secret_service::{read, write};
 }
 
 #[cfg(test)]
